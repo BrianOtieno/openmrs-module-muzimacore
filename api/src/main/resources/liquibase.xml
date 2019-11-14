@@ -1606,4 +1606,20 @@
         </insert>
     </changeSet>
 
+    <changeSet id="muzima-20191114091200" author="moshonk">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT count(*) FROM muzima_setting WHERE property = 'PatientIdentifierType.PreferredIdentifierType' </sqlCheck>
+        </preConditions>
+        <insert tableName="muzima_setting">
+            <column name="property" value="PatientIdentifierType.PreferredIdentifierType" />
+            <column name="name" value="Preferred Patient Identifier Type" />
+            <column name="description" value="The default preferred patient identifier type" />
+            <column name="setting_data_type" value="STRING" />
+            <column name="value_boolean" valueBoolean="false" />
+            <column name="date_created" valueDate="2019-11-14T09:18:00" />
+            <column name="creator" value="1" />
+            <column name="uuid" value="6e37af12-06a6-11ea-9a9f-362b9e155667" />
+        </insert>
+    </changeSet>
+
 </databaseChangeLog>

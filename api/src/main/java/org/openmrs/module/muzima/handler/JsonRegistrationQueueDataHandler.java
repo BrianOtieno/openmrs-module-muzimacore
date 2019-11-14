@@ -30,13 +30,16 @@ import org.openmrs.annotation.Handler;
 import org.openmrs.api.PersonService;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.idgen.service.IdentifierSourceService;
+import org.openmrs.module.muzima.api.service.MuzimaSettingService;
 import org.openmrs.module.muzima.api.service.RegistrationDataService;
 import org.openmrs.module.muzima.exception.QueueProcessorException;
+import org.openmrs.module.muzima.model.MuzimaSetting;
 import org.openmrs.module.muzima.model.QueueData;
 import org.openmrs.module.muzima.model.RegistrationData;
 import org.openmrs.module.muzima.model.handler.QueueDataHandler;
 import org.openmrs.module.muzima.utils.JsonUtils;
 import org.openmrs.module.muzima.utils.PatientSearchUtils;
+import org.openmrs.module.muzima.utils.Constants;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -149,9 +152,15 @@ public class JsonRegistrationQueueDataHandler implements QueueDataHandler {
 
     private void setPatientIdentifiersFromPayload() {
         Set<PatientIdentifier> patientIdentifiers = new TreeSet<PatientIdentifier>();
+        PatientIdentifier openMRSPatientIdentifier = getOpenMRSPatientIdentifier();
         PatientIdentifier preferredIdentifier = getPreferredPatientIdentifierFromPayload();
         if (preferredIdentifier != null) {
             patientIdentifiers.add(preferredIdentifier);
+        } else {
+        	openMRSPatientIdentifier.setPreferred(true);
+        }
+        if (openMRSPatientIdentifier != null) {
+            patientIdentifiers.add(openMRSPatientIdentifier);        	
         }
         List<PatientIdentifier> otherIdentifiers = getOtherPatientIdentifiersFromPayload();
         if (!otherIdentifiers.isEmpty()) {
@@ -161,24 +170,60 @@ public class JsonRegistrationQueueDataHandler implements QueueDataHandler {
         unsavedPatient.setIdentifiers(patientIdentifiers);
     }
 
-    private PatientIdentifier getPreferredPatientIdentifierFromPayload(){
-//        String identifierValue = JsonUtils.readAsString(payload, "$['patient']['patient.medical_record_number']");
-//        String identifierTypeName = "AMRS Universal ID";
+    private PatientIdentifier getOpenMRSPatientIdentifier(){
 
-       // PatientIdentifier preferredPatientIdentifier = createPatientIdentifier(identifierTypeName, identifierValue);
-        PatientIdentifier preferredPatientIdentifier = generateOpenMRSID() ;//createPatientIdentifier(identifierTypeName, identifierValue);
-        if (preferredPatientIdentifier != null) {
-            preferredPatientIdentifier.setPreferred(true);
-            return preferredPatientIdentifier;
+     // PatientIdentifier preferredPatientIdentifier = createPatientIdentifier(identifierTypeName, identifierValue);
+      PatientIdentifier patientIdentifier = generateOpenMRSID() ;//createPatientIdentifier(identifierTypeName, identifierValue);
+      if (patientIdentifier != null) {
+          return patientIdentifier;
+      } else {
+          return null;
+      }
+  }    
+    
+    private PatientIdentifier getPreferredPatientIdentifierFromPayload(){
+        String identifierValue = JsonUtils.readAsString(payload, "$['patient']['patient.medical_record_number']");
+        PatientIdentifierType identifierType = getPreferredPatientIdentifierType();
+        
+        if (identifierType != null) {
+            PatientIdentifier preferredPatientIdentifier = createPatientIdentifier(identifierType.getName(), identifierValue);			
+            if (preferredPatientIdentifier != null) {
+                preferredPatientIdentifier.setPreferred(true);
+                return preferredPatientIdentifier;
+            } else {
+                return null;
+            }
         } else {
-            return null;
-        }
+        	return null;
+        }        
+    }
+    
+    private PatientIdentifierType getPreferredPatientIdentifierType(){
+    	//get setting for preffered identifier type
+        MuzimaSettingService settingService = Context.getService(MuzimaSettingService.class);
+        MuzimaSetting prefferedIdentifierName = settingService.getMuzimaSettingByProperty(
+                Constants.MuzimaSettings.PREFFERED_PATIENT_IDENTIFIER_SETTING_PROPERTY);
+        
+        if (prefferedIdentifierName != null) {
+            String identifierTypeName = prefferedIdentifierName.getValueString();
+            PatientIdentifierType identifierType = Context.getPatientService()
+                    .getPatientIdentifierTypeByName(identifierTypeName);
+            if (identifierType == null) {
+                queueProcessorException.addException(
+                        new Exception("Unable to find identifier type with name: " + identifierTypeName));
+            } else {
+                return identifierType;
+            }			
+		} else {
+			return null;
+		}
+        return null;    	
     }
 
     private List<PatientIdentifier> getOtherPatientIdentifiersFromPayload() {
         List<PatientIdentifier> otherIdentifiers = new ArrayList<PatientIdentifier>();
-        Object identifierTypeNameObject = JsonUtils.readAsObject(payload, "$['observation']['other_identifier_type']");
-        Object identifierValueObject = JsonUtils.readAsObject(payload, "$['observation']['other_identifier_value']");
+        Object identifierTypeNameObject = JsonUtils.readAsObject(payload, "$['patient']['patient.other_identifier_type']");
+        Object identifierValueObject = JsonUtils.readAsObject(payload, "$['patient']['patient.other_identifier_value']");
 
         if (identifierTypeNameObject instanceof JSONArray) {
             JSONArray identifierTypeName = (JSONArray) identifierTypeNameObject;
